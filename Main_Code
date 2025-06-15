@@ -1,0 +1,88 @@
+module Bit_Parallel_Word_Serial #(
+    parameter DATA_WIDTH = 8,
+    parameter NUM_ELEMS  = 16
+)(
+    input  wire clk,
+    input  wire rst,
+    input  wire start,
+    input  wire [NUM_ELEMS*DATA_WIDTH-1:0] unsorted_data,
+    output reg  [NUM_ELEMS*DATA_WIDTH-1:0] sorted_data,
+    output reg  done
+);
+
+    // Declare memory to hold
+    reg [DATA_WIDTH-1:0] data_array [0:NUM_ELEMS-1];
+    reg [DATA_WIDTH-1:0] temp;
+    integer i;
+
+    // Sorting control
+    reg [3:0] pass;       
+    reg [3:0] index;      
+    reg sorting;          
+
+    // FSM
+    parameter IDLE = 2'b00, LOAD = 2'b01, SORT = 2'b10, DONE = 2'b11;
+    reg [1:0] current_state, next_state;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst)
+            current_state <= IDLE;
+        else
+            current_state <= next_state;
+    end
+
+    always @(*) begin
+        case (current_state)
+            IDLE:  next_state = start ? LOAD : IDLE;
+            LOAD:  next_state = SORT;
+            SORT:  next_state = (pass == NUM_ELEMS - 1) ? DONE : SORT;
+            DONE:  next_state = IDLE;
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Sorting and Output Logic
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            done  <= 0;
+            pass  <= 0;
+            index <= 0;
+            sorting <= 0;
+        end else begin
+            case (current_state)
+                IDLE: begin
+                    done <= 0;
+                    pass <= 0;
+                    index <= 0;
+                end
+
+                LOAD: begin
+                    for (i = 0; i < NUM_ELEMS; i = i + 1) begin
+                        data_array[i] <= unsorted_data[i*DATA_WIDTH +: DATA_WIDTH];
+                    end
+                    pass <= 0;
+                end
+
+                SORT: begin
+                    // One full pass of bubble sort per clock cycle
+                    for (i = 0; i < NUM_ELEMS - 1 - pass; i = i + 1) begin
+                        if (data_array[i] > data_array[i+1]) begin
+                            temp = data_array[i];
+                            data_array[i] = data_array[i+1];
+                            data_array[i+1] = temp;
+                        end
+                    end
+                    pass <= pass + 1;
+                end
+
+                DONE: begin
+                    done <= 1;
+                    for (i = 0; i < NUM_ELEMS; i = i + 1) begin
+                        sorted_data[i*DATA_WIDTH +: DATA_WIDTH] <= data_array[i];
+                    end
+                end
+            endcase
+        end
+    end
+
+endmodule
