@@ -1,27 +1,29 @@
-module Bit_Parallel_Word_Serial #(
+module Bit_Parallel_Word_Series #(
     parameter DATA_WIDTH = 8,
-    parameter NUM_ELEMS  = 16
+    parameter NUM_ELEMS  = 16,
+    parameter INDEX_WIDTH = 4
 )(
     input  wire clk,
     input  wire rst,
     input  wire start,
-    input  wire [NUM_ELEMS*DATA_WIDTH-1:0] unsorted_data,
-    output reg  [NUM_ELEMS*DATA_WIDTH-1:0] sorted_data,
+    input  wire [0:NUM_ELEMS*DATA_WIDTH-1] unsorted_data,
+    output reg  [0:NUM_ELEMS*DATA_WIDTH-1] sorted_data,
+    output reg  [0:NUM_ELEMS*INDEX_WIDTH-1] sorted_indices,
     output reg  done
 );
 
-    // Declare memory to hold
+    // Declare memory to hold values and their indices
     reg [DATA_WIDTH-1:0] data_array [0:NUM_ELEMS-1];
-    reg [DATA_WIDTH-1:0] temp;
+    reg [INDEX_WIDTH-1:0] index_array [0:NUM_ELEMS-1];
+    reg [DATA_WIDTH-1:0] temp_data;
+    reg [INDEX_WIDTH-1:0] temp_index;
     integer i;
 
     // Sorting control
-    reg [3:0] pass;       
-    reg [3:0] index;      
-    reg sorting;          
+    reg [3:0] pass;
 
     // FSM
-    parameter IDLE = 2'b00, LOAD = 2'b01, SORT = 2'b10, DONE = 2'b11;
+    localparam IDLE = 2'b00, LOAD = 2'b01, SORT = 2'b10, DONE = 2'b11;
     reg [1:0] current_state, next_state;
 
     always @(posedge clk or posedge rst) begin
@@ -41,35 +43,35 @@ module Bit_Parallel_Word_Serial #(
         endcase
     end
 
-    // Sorting and Output Logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             done  <= 0;
             pass  <= 0;
-            index <= 0;
-            sorting <= 0;
         end else begin
             case (current_state)
                 IDLE: begin
                     done <= 0;
                     pass <= 0;
-                    index <= 0;
                 end
 
                 LOAD: begin
                     for (i = 0; i < NUM_ELEMS; i = i + 1) begin
                         data_array[i] <= unsorted_data[i*DATA_WIDTH +: DATA_WIDTH];
+                        index_array[i] <= i[INDEX_WIDTH-1:0];
                     end
                     pass <= 0;
                 end
 
                 SORT: begin
-                    // One full pass of bubble sort per clock cycle
                     for (i = 0; i < NUM_ELEMS - 1 - pass; i = i + 1) begin
                         if (data_array[i] > data_array[i+1]) begin
-                            temp = data_array[i];
+                            temp_data = data_array[i];
                             data_array[i] = data_array[i+1];
-                            data_array[i+1] = temp;
+                            data_array[i+1] = temp_data;
+
+                            temp_index = index_array[i];
+                            index_array[i] = index_array[i+1];
+                            index_array[i+1] = temp_index;
                         end
                     end
                     pass <= pass + 1;
@@ -79,6 +81,7 @@ module Bit_Parallel_Word_Serial #(
                     done <= 1;
                     for (i = 0; i < NUM_ELEMS; i = i + 1) begin
                         sorted_data[i*DATA_WIDTH +: DATA_WIDTH] <= data_array[i];
+                        sorted_indices[i*INDEX_WIDTH +: INDEX_WIDTH] <= index_array[i];
                     end
                 end
             endcase
