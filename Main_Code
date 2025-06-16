@@ -1,4 +1,4 @@
-module Bit_Parallel_Word_Series #(
+module Sorting_33 #(
     parameter DATA_WIDTH = 8,
     parameter NUM_ELEMS  = 16,
     parameter INDEX_WIDTH = 4
@@ -17,14 +17,15 @@ module Bit_Parallel_Word_Series #(
     reg [INDEX_WIDTH-1:0] index_array [0:NUM_ELEMS-1];
     reg [DATA_WIDTH-1:0] temp_data;
     reg [INDEX_WIDTH-1:0] temp_index;
-    integer i;
 
-    // Sorting control
-    reg [3:0] pass;
+    integer i;
 
     // FSM
     localparam IDLE = 2'b00, LOAD = 2'b01, SORT = 2'b10, DONE = 2'b11;
     reg [1:0] current_state, next_state;
+
+    // Bit-parallel sorting control
+    reg [4:0] bit_pos;  // For up to 32-bit DATA_WIDTH
 
     always @(posedge clk or posedge rst) begin
         if (rst)
@@ -37,7 +38,7 @@ module Bit_Parallel_Word_Series #(
         case (current_state)
             IDLE:  next_state = start ? LOAD : IDLE;
             LOAD:  next_state = SORT;
-            SORT:  next_state = (pass == NUM_ELEMS - 1) ? DONE : SORT;
+            SORT:  next_state = (bit_pos == 0) ? DONE : SORT;
             DONE:  next_state = IDLE;
             default: next_state = IDLE;
         endcase
@@ -45,13 +46,13 @@ module Bit_Parallel_Word_Series #(
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            done  <= 0;
-            pass  <= 0;
+            done <= 0;
+            bit_pos <= DATA_WIDTH - 1;
         end else begin
             case (current_state)
                 IDLE: begin
                     done <= 0;
-                    pass <= 0;
+                    bit_pos <= DATA_WIDTH - 1;
                 end
 
                 LOAD: begin
@@ -59,22 +60,28 @@ module Bit_Parallel_Word_Series #(
                         data_array[i] <= unsorted_data[i*DATA_WIDTH +: DATA_WIDTH];
                         index_array[i] <= i[INDEX_WIDTH-1:0];
                     end
-                    pass <= 0;
+                    bit_pos <= DATA_WIDTH - 1;
                 end
 
                 SORT: begin
-                    for (i = 0; i < NUM_ELEMS - 1 - pass; i = i + 1) begin
-                        if (data_array[i] > data_array[i+1]) begin
+                    for (i = 0; i < NUM_ELEMS - 1; i = i + 1) begin
+                        // Compare the bit at position `bit_pos`
+                        if ((data_array[i][bit_pos] > data_array[i+1][bit_pos]) ||
+                            ((data_array[i][bit_pos] == data_array[i+1][bit_pos]) &&
+                             (data_array[i] > data_array[i+1]))) begin
+                            
+                            // Swap data
                             temp_data = data_array[i];
                             data_array[i] = data_array[i+1];
                             data_array[i+1] = temp_data;
 
+                            // Swap indices
                             temp_index = index_array[i];
                             index_array[i] = index_array[i+1];
                             index_array[i+1] = temp_index;
                         end
                     end
-                    pass <= pass + 1;
+                    bit_pos <= bit_pos - 1;
                 end
 
                 DONE: begin
