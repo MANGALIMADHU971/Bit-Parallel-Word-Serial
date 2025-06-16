@@ -1,4 +1,4 @@
-module Sorting_33 #(
+module Bit_Parallel_Word_Series #(
     parameter DATA_WIDTH = 8,
     parameter NUM_ELEMS  = 16,
     parameter INDEX_WIDTH = 4
